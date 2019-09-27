@@ -6,7 +6,10 @@ extern "C"
 {
 #include <libavutil/timestamp.h>
 #include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
 }
+
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include "makeguard.h"
 
@@ -228,6 +231,18 @@ int main(int argc, char **argv)
 
     AVFramePtr videoFrame(av_frame_alloc());
 
+    //AVFramePtr pFrameRGB(av_frame_alloc());
+    //pFrameRGB->format = AV_PIX_FMT_BGR24;
+    //pFrameRGB->width = m_videoCodecContext->width;
+    //pFrameRGB->height = m_videoCodecContext->height;
+    //av_frame_get_buffer(pFrameRGB.get(), 16);
+
+    AVFramePtr videoFrameOut(av_frame_alloc());
+    videoFrameOut->format = m_videoCodecContext->pix_fmt;
+    videoFrameOut->width = m_videoCodecContext->width;
+    videoFrameOut->height = m_videoCodecContext->height;
+    av_frame_get_buffer(videoFrameOut.get(), 16);
+
     while (true) {
         //AVStream *in_stream, *out_stream;
         AVPacket packet;
@@ -260,7 +275,7 @@ int main(int argc, char **argv)
                 avEncodedPacket.size = 0;
 
 
-                auto avFrameRescaledFrame = videoFrame.get();
+                //auto avFrameRescaledFrame = videoFrame.get();
 
 
                 // encode rescaled frame
@@ -268,7 +283,56 @@ int main(int argc, char **argv)
                 //if (avcodec_encode_video2(enc_ctx, &avEncodedPacket, avFrameRescaledFrame, &got_frame) < 0) 
                 //    exit(1);
 
-                auto ret = avcodec_send_frame(enc_ctx, avFrameRescaledFrame);
+                cv::Mat img(videoFrame->height, videoFrame->width, CV_8UC3);// , pFrameRGB->data[0]); //dst->data[0]);
+
+                int stride = img.step[0];
+
+                //int stride = videoFrame->width * 3;
+
+                auto img_convert_ctx = sws_getCachedContext(
+                    NULL, 
+                    m_videoCodecContext->width, 
+                    m_videoCodecContext->height, 
+                    m_videoCodecContext->pix_fmt, 
+                    m_videoCodecContext->width,
+                    m_videoCodecContext->height, 
+                    AV_PIX_FMT_BGR24, 
+                    SWS_FAST_BILINEAR, NULL, NULL, NULL);
+                sws_scale(img_convert_ctx, videoFrame->data, videoFrame->linesize, 0, m_videoCodecContext->height, //pFrameRGB->data, pFrameRGB->linesize);
+                    //(uint8_t*)
+                    &img.data, //&videoFrame->width);
+                    &stride);
+
+
+                auto reverse_convert_ctx = sws_getCachedContext(
+                    NULL,
+                    m_videoCodecContext->width,
+                    m_videoCodecContext->height,
+                    AV_PIX_FMT_BGR24,
+                    m_videoCodecContext->width,
+                    m_videoCodecContext->height,
+                    m_videoCodecContext->pix_fmt,
+                    SWS_FAST_BILINEAR, NULL, NULL, NULL);
+
+                sws_scale(reverse_convert_ctx, 
+                    &img.data, 
+                    &stride,
+                    //&videoFrame->width,
+                    0, m_videoCodecContext->height, //pFrameRGB->data, pFrameRGB->linesize);
+                    //(uint8_t*)
+                    videoFrameOut->data, videoFrameOut->linesize
+                 );
+
+
+                //
+
+                //avpicture_fill(pFrameRGB, )
+
+                videoFrameOut->pts = videoFrame->pts;
+                videoFrameOut->pkt_dts = videoFrame->pkt_dts;
+
+
+                auto ret = avcodec_send_frame(enc_ctx, videoFrameOut.get());
                 if (ret >= 0)
                 {
                     ret = avcodec_receive_packet(enc_ctx, &avEncodedPacket);
