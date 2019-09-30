@@ -335,8 +335,8 @@ int main(int argc, char **argv)
                 auto ret = avcodec_send_frame(enc_ctx, videoFrameOut.get());
                 if (ret >= 0)
                 {
-                    ret = avcodec_receive_packet(enc_ctx, &avEncodedPacket);
-                    if (!ret)
+                    while (!(ret = avcodec_receive_packet(enc_ctx, &avEncodedPacket)))
+                    //if (!ret)
                     {
                         if (avEncodedPacket.pts != AV_NOPTS_VALUE)
                             avEncodedPacket.pts = av_rescale_q(avEncodedPacket.pts, enc_ctx->time_base, outputVideoStream->time_base);
@@ -371,6 +371,40 @@ int main(int argc, char **argv)
         }
         av_packet_unref(&packet);
     }
+
+    // flush encoder
+    if (m_videoCodec->capabilities & AV_CODEC_CAP_DELAY)
+    {
+        AVPacket avEncodedPacket;
+
+        av_init_packet(&avEncodedPacket);
+        avEncodedPacket.data = NULL;
+        avEncodedPacket.size = 0;
+
+        while ((ret = avcodec_send_frame(enc_ctx, nullptr)) >= 0)
+        {
+            //auto ret = avcodec_send_frame(enc_ctx, nullptr);
+            //if (ret >= 0)
+            {
+                //ret = avcodec_receive_packet(enc_ctx, &avEncodedPacket);
+                //if (!ret)
+                while (!(ret = avcodec_receive_packet(enc_ctx, &avEncodedPacket)))
+                {
+                    if (avEncodedPacket.pts != AV_NOPTS_VALUE)
+                        avEncodedPacket.pts = av_rescale_q(avEncodedPacket.pts, enc_ctx->time_base, outputVideoStream->time_base);
+                    if (avEncodedPacket.dts != AV_NOPTS_VALUE)
+                        avEncodedPacket.dts = av_rescale_q(avEncodedPacket.dts, enc_ctx->time_base, outputVideoStream->time_base);
+
+                    // outContainer is "mp4"
+                    av_write_frame(output_format_context, &avEncodedPacket);
+
+                    //av_free_packet(&encodedPacket);
+                }
+            }
+
+        }
+    }
+
     //https://ffmpeg.org/doxygen/trunk/group__lavf__encoding.html#ga7f14007e7dc8f481f054b21614dfec13
     av_write_trailer(output_format_context);
 
