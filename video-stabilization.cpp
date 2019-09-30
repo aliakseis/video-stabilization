@@ -33,12 +33,10 @@ void ReportError(int ret)
 int main(int argc, char **argv)
 {
     AVFormatContext *input_format_context = NULL, *output_format_context = NULL;
-    //AVPacket packet;
-    const char *in_filename, *out_filename;
-    int ret, i;
+
+    int ret;
     int stream_index = 0;
-    //int *streams_list = NULL;
-    //int number_of_streams = 0;
+
     int fragmented_mp4_options = 0;
 
     AVDictionary* opts = NULL;
@@ -51,8 +49,8 @@ int main(int argc, char **argv)
         fragmented_mp4_options = 1;
     }
 
-    in_filename = argv[1];
-    out_filename = argv[2];
+    const char *in_filename = argv[1];
+    const char *out_filename = argv[2];
 
     if ((ret = avformat_open_input(&input_format_context, in_filename, NULL, NULL)) < 0) {
         fprintf(stderr, "Could not open input file '%s'", in_filename);
@@ -77,19 +75,14 @@ int main(int argc, char **argv)
     auto output_format_context_guard = MakeGuard(output_format_context, avformat_free_context);
 
     const auto number_of_streams = input_format_context->nb_streams;
-    //streams_list = static_cast<int*>(av_mallocz_array(number_of_streams, sizeof(*streams_list)));
     std::vector<int> streams_list(number_of_streams);
 
-    //if (!streams_list) {
-    //    ret = AVERROR(ENOMEM);
-    //    goto end;
-    //}
 
     int m_videoStreamNumber = -1;
     AVStream* m_videoStream = nullptr;
     AVStream* outputVideoStream = nullptr;
 
-    for (i = 0; i < input_format_context->nb_streams; i++) {
+    for (int i = 0; i < input_format_context->nb_streams; i++) {
         AVStream *out_stream;
         AVStream *in_stream = input_format_context->streams[i];
         AVCodecParameters *in_codecpar = in_stream->codecpar;
@@ -164,7 +157,6 @@ int main(int argc, char **argv)
 
 
 
-
     // output
 /* in this example, we choose transcoding to same codec */
     auto encoder = avcodec_find_encoder(m_videoCodecContext->codec_id);
@@ -199,23 +191,16 @@ int main(int argc, char **argv)
     /* Third parameter can be used to pass settings to encoder */
     ret = avcodec_open2(enc_ctx, encoder, NULL);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot open video encoder for stream #%u\n", i);
+        av_log(NULL, AV_LOG_ERROR, "Cannot open video encoder for stream #%u\n", m_videoStreamNumber);
         ReportError(ret);
         return 1;
     }
     ret = avcodec_parameters_from_context(outputVideoStream->codecpar, enc_ctx);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n", i);
+        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n", m_videoStreamNumber);
         return 1;
     }
     outputVideoStream->time_base = enc_ctx->time_base;
-
-    // ???
-    //stream_ctx[i].enc_ctx = enc_ctx;
-
-
-
-
 
 
     if (fragmented_mp4_options) {
@@ -231,12 +216,6 @@ int main(int argc, char **argv)
 
     AVFramePtr videoFrame(av_frame_alloc());
 
-    //AVFramePtr pFrameRGB(av_frame_alloc());
-    //pFrameRGB->format = AV_PIX_FMT_BGR24;
-    //pFrameRGB->width = m_videoCodecContext->width;
-    //pFrameRGB->height = m_videoCodecContext->height;
-    //av_frame_get_buffer(pFrameRGB.get(), 16);
-
     AVFramePtr videoFrameOut(av_frame_alloc());
     videoFrameOut->format = m_videoCodecContext->pix_fmt;
     videoFrameOut->width = m_videoCodecContext->width;
@@ -244,7 +223,6 @@ int main(int argc, char **argv)
     av_frame_get_buffer(videoFrameOut.get(), 16);
 
     while (true) {
-        //AVStream *in_stream, *out_stream;
         AVPacket packet;
 
         ret = av_read_frame(input_format_context, &packet);
@@ -275,19 +253,10 @@ int main(int argc, char **argv)
                 avEncodedPacket.size = 0;
 
 
-                //auto avFrameRescaledFrame = videoFrame.get();
-
-
-                // encode rescaled frame
-                //int got_frame = 0;
-                //if (avcodec_encode_video2(enc_ctx, &avEncodedPacket, avFrameRescaledFrame, &got_frame) < 0) 
-                //    exit(1);
-
                 cv::Mat img(videoFrame->height, videoFrame->width, CV_8UC3);// , pFrameRGB->data[0]); //dst->data[0]);
 
                 int stride = img.step[0];
 
-                //int stride = videoFrame->width * 3;
 
                 auto img_convert_ctx = sws_getCachedContext(
                     NULL, 
@@ -324,9 +293,6 @@ int main(int argc, char **argv)
                  );
 
 
-                //
-
-                //avpicture_fill(pFrameRGB, )
 
                 videoFrameOut->pts = videoFrame->pts;
                 videoFrameOut->pkt_dts = videoFrame->pkt_dts;
@@ -411,17 +377,5 @@ int main(int argc, char **argv)
     if (output_format_context && !(output_format_context->oformat->flags & AVFMT_NOFILE))
         avio_closep(&output_format_context->pb);
 
-//end:
-//    avformat_close_input(&input_format_context);
-//    /* close output */
-//    if (output_format_context && !(output_format_context->oformat->flags & AVFMT_NOFILE))
-//        avio_closep(&output_format_context->pb);
-//    avformat_free_context(output_format_context);
-//    av_freep(&streams_list);
-//    if (ret < 0 && ret != AVERROR_EOF) {
-//        char errBuf[AV_ERROR_MAX_STRING_SIZE]{};
-//        fprintf(stderr, "Error occurred: %s\n", av_make_error_string(errBuf, AV_ERROR_MAX_STRING_SIZE, ret));
-//        return 1;
-//    }
     return 0;
 }
