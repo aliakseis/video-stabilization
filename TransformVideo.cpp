@@ -369,4 +369,3 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
 
     return 0;
 }
-
