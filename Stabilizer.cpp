@@ -84,7 +84,7 @@ void Stabilizer::operator()(cv::Mat& cur)
 
     // weed out bad matches
     for (size_t i = 0; i < status.size(); i++) {
-        if (status[i] != 0u) {
+        if (status[i] != 0) {
             prev_corner2.push_back(prev_corner[i]);
             cur_corner2.push_back(cur_corner[i]);
         }

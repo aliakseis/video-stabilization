@@ -65,8 +65,8 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
     std::vector<int> streams_list(number_of_streams);
 
 
-    int m_videoStreamNumber = -1;
-    AVStream* m_videoStream = nullptr;
+    int videoStreamNumber = -1;
+    AVStream* videoStream = nullptr;
     AVStream* outputVideoStream = nullptr;
 
     for (int i = 0; i < input_format_context->nb_streams; i++) {
@@ -77,8 +77,8 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
         const bool isVideoStream = in_codecpar->codec_type == AVMEDIA_TYPE_VIDEO;
         if (isVideoStream)
         {
-            m_videoStreamNumber = i;
-            m_videoStream = in_stream;
+            videoStreamNumber = i;
+            videoStream = in_stream;
         }
         else if (in_codecpar->codec_type != AVMEDIA_TYPE_AUDIO &&
             in_codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE) {
@@ -119,24 +119,24 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
 
 
     // input video context
-    auto m_videoCodecContext = avcodec_alloc_context3(nullptr);
-    if (!m_videoCodecContext)
+    auto videoCodecContext = avcodec_alloc_context3(nullptr);
+    if (!videoCodecContext)
         return 1;
 
-    auto videoCodecContextGuard = MakeGuard(&m_videoCodecContext, avcodec_free_context);
+    auto videoCodecContextGuard = MakeGuard(&videoCodecContext, avcodec_free_context);
 
-    if (avcodec_parameters_to_context(m_videoCodecContext, m_videoStream->codecpar) < 0)
+    if (avcodec_parameters_to_context(videoCodecContext, videoStream->codecpar) < 0)
         return 1;
 
-    auto m_videoCodec = avcodec_find_decoder(m_videoCodecContext->codec_id);
-    if (m_videoCodec == nullptr)
+    auto videoCodec = avcodec_find_decoder(videoCodecContext->codec_id);
+    if (videoCodec == nullptr)
     {
         fprintf(stderr, "No such codec found");
         return 1;  // Codec not found
     }
 
     // Open codec
-    if (avcodec_open2(m_videoCodecContext, m_videoCodec, nullptr) < 0)
+    if (avcodec_open2(videoCodecContext, videoCodec, nullptr) < 0)
     {
         fprintf(stderr, "Error on codec opening");
         return 1;  // Could not open codec
@@ -146,7 +146,7 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
 
     // output
 /* in this example, we choose transcoding to same codec */
-    auto encoder = avcodec_find_encoder(m_videoCodecContext->codec_id);
+    auto encoder = avcodec_find_encoder(videoCodecContext->codec_id);
     if (!encoder) {
         av_log(NULL, AV_LOG_FATAL, "Necessary encoder not found\n");
         return 1;
@@ -161,30 +161,28 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
      * sample rate etc.). These properties can be changed for output
      * streams easily using filters */
      // if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-    enc_ctx->height = m_videoCodecContext->height;
-    enc_ctx->width = m_videoCodecContext->width;
-    enc_ctx->sample_aspect_ratio = m_videoCodecContext->sample_aspect_ratio;
+    enc_ctx->height = videoCodecContext->height;
+    enc_ctx->width = videoCodecContext->width;
+    enc_ctx->sample_aspect_ratio = videoCodecContext->sample_aspect_ratio;
+
     /* take first format from list of supported formats */
-    if (encoder->pix_fmts)
-        enc_ctx->pix_fmt = encoder->pix_fmts[0];
-    else
-        enc_ctx->pix_fmt = m_videoCodecContext->pix_fmt;
+    enc_ctx->pix_fmt = (encoder->pix_fmts != nullptr)? encoder->pix_fmts[0] : videoCodecContext->pix_fmt;
     /* video time_base can be set to whatever is handy and supported by encoder */
     //enc_ctx->time_base = av_inv_q(m_videoCodecContext->framerate);
-    enc_ctx->time_base = m_videoStream->time_base;
+    enc_ctx->time_base = videoStream->time_base;
 
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER)
         enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     /* Third parameter can be used to pass settings to encoder */
     ret = avcodec_open2(enc_ctx, encoder, NULL);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot open video encoder for stream #%u\n", m_videoStreamNumber);
+        av_log(NULL, AV_LOG_ERROR, "Cannot open video encoder for stream #%u\n", videoStreamNumber);
         ReportError(ret);
         return 1;
     }
     ret = avcodec_parameters_from_context(outputVideoStream->codecpar, enc_ctx);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n", m_videoStreamNumber);
+        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n", videoStreamNumber);
         return 1;
     }
     outputVideoStream->time_base = enc_ctx->time_base;
@@ -204,9 +202,9 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
     AVFramePtr videoFrame(av_frame_alloc());
 
     AVFramePtr videoFrameOut(av_frame_alloc());
-    videoFrameOut->format = m_videoCodecContext->pix_fmt;
-    videoFrameOut->width = m_videoCodecContext->width;
-    videoFrameOut->height = m_videoCodecContext->height;
+    videoFrameOut->format = videoCodecContext->pix_fmt;
+    videoFrameOut->width = videoCodecContext->width;
+    videoFrameOut->height = videoCodecContext->height;
     av_frame_get_buffer(videoFrameOut.get(), 16);
 
     while (true) {
@@ -223,13 +221,13 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
         packet.stream_index = streams_list[packet.stream_index];
         const auto out_stream = output_format_context->streams[packet.stream_index];
 
-        if (packet.stream_index == m_videoStreamNumber)
+        if (packet.stream_index == videoStreamNumber)
         {
-            const int ret = avcodec_send_packet(m_videoCodecContext, &packet);
+            const int ret = avcodec_send_packet(videoCodecContext, &packet);
             if (ret < 0)
                 return false;
 
-            while (avcodec_receive_frame(m_videoCodecContext, videoFrame.get()) == 0)
+            while (avcodec_receive_frame(videoCodecContext, videoFrame.get()) == 0)
             {
                 // transformation
 
@@ -247,14 +245,14 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
 
                 auto img_convert_ctx = sws_getCachedContext(
                     NULL,
-                    m_videoCodecContext->width,
-                    m_videoCodecContext->height,
-                    m_videoCodecContext->pix_fmt,
-                    m_videoCodecContext->width,
-                    m_videoCodecContext->height,
+                    videoCodecContext->width,
+                    videoCodecContext->height,
+                    videoCodecContext->pix_fmt,
+                    videoCodecContext->width,
+                    videoCodecContext->height,
                     AV_PIX_FMT_BGR24,
                     SWS_FAST_BILINEAR, NULL, NULL, NULL);
-                sws_scale(img_convert_ctx, videoFrame->data, videoFrame->linesize, 0, m_videoCodecContext->height, //pFrameRGB->data, pFrameRGB->linesize);
+                sws_scale(img_convert_ctx, videoFrame->data, videoFrame->linesize, 0, videoCodecContext->height, //pFrameRGB->data, pFrameRGB->linesize);
                     //(uint8_t*)
                     &img.data, //&videoFrame->width);
                     &stride);
@@ -265,19 +263,19 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
 
                 auto reverse_convert_ctx = sws_getCachedContext(
                     NULL,
-                    m_videoCodecContext->width,
-                    m_videoCodecContext->height,
+                    videoCodecContext->width,
+                    videoCodecContext->height,
                     AV_PIX_FMT_BGR24,
-                    m_videoCodecContext->width,
-                    m_videoCodecContext->height,
-                    m_videoCodecContext->pix_fmt,
+                    videoCodecContext->width,
+                    videoCodecContext->height,
+                    videoCodecContext->pix_fmt,
                     SWS_FAST_BILINEAR, NULL, NULL, NULL);
 
                 sws_scale(reverse_convert_ctx,
                     &img.data,
                     &stride,
                     //&videoFrame->width,
-                    0, m_videoCodecContext->height, //pFrameRGB->data, pFrameRGB->linesize);
+                    0, videoCodecContext->height, //pFrameRGB->data, pFrameRGB->linesize);
                     //(uint8_t*)
                     videoFrameOut->data, videoFrameOut->linesize
                 );
@@ -329,7 +327,7 @@ int TransformVideo(const char *in_filename, const char *out_filename, std::funct
     }
 
     // flush encoder
-    if (m_videoCodec->capabilities & AV_CODEC_CAP_DELAY)
+    if (videoCodec->capabilities & AV_CODEC_CAP_DELAY)
     {
         AVPacket avEncodedPacket;
 
