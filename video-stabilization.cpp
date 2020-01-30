@@ -9,15 +9,19 @@
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        printf("You need to pass at least two parameters.\n");
-        return -1;
+        printf("You need to pass input and output file names as program parameters.\n");
+        return EXIT_FAILURE;
     }
     
     const char *in_filename = argv[1];
     const char *out_filename = argv[2];
     
-
-    Stabilizer stabilizer;
-
-    return TransformVideo(in_filename, out_filename, std::ref(stabilizer));
+    try {
+        Stabilizer stabilizer;
+        return TransformVideo(in_filename, out_filename, std::ref(stabilizer));
+    }
+    catch (const std::exception& ex) {
+        std::cerr << "Exception " << typeid(ex).name() << ": " << ex.what() << '\n';
+        return EXIT_FAILURE;
+    }
 }
